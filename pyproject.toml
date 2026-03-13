@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "enterprise-router"
+version = "0.1.0"
+description = "Hierarchy-aware enterprise agent messaging package."
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+  { name = "UI Team" }
+]
+
+[project.scripts]
+enterprise-router = "enterprise_router.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["enterprise_router*"]
