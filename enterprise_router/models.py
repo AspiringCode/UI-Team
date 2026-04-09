@@ -15,6 +15,7 @@ URGENCY_WEIGHTS = {
 }
 ROLE_DEFAULTS = {
     "CEO": {"hierarchy_level": 1, "trust_level": 100, "recipient_weight": 120},
+    "MANAGER": {"hierarchy_level": 2, "trust_level": 95, "recipient_weight": 95},
     "PM": {"hierarchy_level": 2, "trust_level": 75, "recipient_weight": 80},
     "PRODUCT": {"hierarchy_level": 2, "trust_level": 75, "recipient_weight": 80},
     "ENGINEERING": {"hierarchy_level": 2, "trust_level": 75, "recipient_weight": 80},

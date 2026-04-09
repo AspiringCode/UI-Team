@@ -12,6 +12,7 @@ from enterprise_router import (
     RoutingHints,
     ValidationError,
 )
+from enterprise_router.models import role_defaults
 
 
 class EnterpriseRouterTests(unittest.TestCase):
@@ -224,6 +225,46 @@ class EnterpriseRouterTests(unittest.TestCase):
         message.context = []  # type: ignore[assignment]
         with self.assertRaises(ValidationError):
             self.router.submit_message(message)
+
+    def test_manager_role_defaults_are_available(self) -> None:
+        defaults = role_defaults("manager")
+        self.assertEqual(defaults["hierarchy_level"], 2)
+        self.assertEqual(defaults["trust_level"], 95)
+        self.assertEqual(defaults["recipient_weight"], 95)
+
+    def test_manager_intervention_queues_a_standard_message(self) -> None:
+        self.router.register_agent(
+            AgentRecord(
+                agent_name="MANAGER",
+                role="MANAGER",
+                hierarchy_level=2,
+                trust_level=95,
+            )
+        )
+
+        message_id = self.router.submit_manager_intervention(
+            recipient="CEO",
+            instruction="Prioritize enterprise accounts this week.",
+            urgency="high",
+            context={"channel": "dashboard"},
+            payload={"reason": "manual override"},
+            requires_response=True,
+            ttl_seconds=600,
+            dedupe_key="manager-priority-shift",
+        )
+
+        queue = self.router.list_queue("CEO")
+        queued = next(item for item in queue if item.envelope.id == message_id)
+        self.assertEqual(queued.envelope.sender, "MANAGER")
+        self.assertEqual(queued.envelope.recipient, "CEO")
+        self.assertEqual(queued.envelope.task_type, "MANAGER_INTERVENTION")
+        self.assertEqual(queued.provenance_source, "manager_dashboard")
+        self.assertEqual(queued.dedupe_key, "manager-priority-shift")
+        self.assertEqual(
+            queued.envelope.payload["instruction"],
+            "Prioritize enterprise accounts this week.",
+        )
+        self.assertTrue(queued.envelope.payload["requires_response"])
 
 
 if __name__ == "__main__":

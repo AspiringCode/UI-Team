@@ -339,6 +339,46 @@ class EnterpriseRouter:
         self._refresh_queue(recipient=recipient)
         return [self._queued_from_record(row) for row in self.storage.get_queue_records(recipient)]
 
+    def submit_manager_intervention(
+        self,
+        recipient: str,
+        instruction: str,
+        *,
+        task_type: str = "MANAGER_INTERVENTION",
+        urgency: str = "normal",
+        context: dict[str, Any] | None = None,
+        payload: dict[str, Any] | None = None,
+        requires_response: bool = False,
+        ttl_seconds: int | None = None,
+        dedupe_key: str | None = None,
+    ) -> str:
+        if not instruction.strip():
+            raise ValidationError("instruction is required.")
+        manager = self._require_active_agent("MANAGER")
+        merged_payload = {
+            **(payload or {}),
+            "instruction": instruction.strip(),
+            "source": "manager_dashboard",
+            "requested_by": manager.agent_name,
+            "requires_response": requires_response,
+        }
+        message = self.create_message(
+            manager.agent_name,
+            recipient,
+            task_type,
+            context=context or {},
+            payload=merged_payload,
+        )
+        hints = RoutingHints(
+            urgency=urgency,
+            ttl_seconds=ttl_seconds,
+            dedupe_key=dedupe_key,
+            provenance_source="manager_dashboard",
+            provenance_agent=manager.agent_name,
+            provenance_trust_level=manager.trust_level,
+        )
+        return self.submit_message(message, hints)
+
     def list_audit_log(
         self, limit: int = 50, subject_id: str | None = None
     ) -> list[dict[str, Any]]:

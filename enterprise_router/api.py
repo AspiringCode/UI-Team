@@ -53,6 +53,17 @@ if FastAPI is not None:  # pragma: no cover - imported only when fastapi exists
         message: MessageBody
         routing_hints: dict[str, Any] = Field(default_factory=dict)
 
+    class ManagerInterventionBody(BaseModel):
+        recipient: str
+        instruction: str
+        task_type: str = "MANAGER_INTERVENTION"
+        priority: str = "normal"
+        context: dict[str, Any] = Field(default_factory=dict)
+        payload: dict[str, Any] = Field(default_factory=dict)
+        requires_response: bool = False
+        ttl_seconds: int | None = None
+        dedupe_key: str | None = None
+
 
     class AgentBody(BaseModel):
         agent_name: str
@@ -223,6 +234,38 @@ def create_app(settings: RouterSettings | None = None):
         except Exception as exc:
             handle_router_error(exc)
         return {"message_id": message_id}
+
+    @app.post("/manager/interventions")
+    def submit_manager_intervention(
+        body: ManagerInterventionBody,
+        agent_name: str = Depends(require_agent),
+    ) -> dict[str, Any]:
+        if agent_name != "MANAGER":
+            raise HTTPException(
+                status_code=403,
+                detail="Only the MANAGER agent may submit interventions.",
+            )
+        try:
+            message_id = router.submit_manager_intervention(
+                recipient=body.recipient,
+                instruction=body.instruction,
+                task_type=body.task_type,
+                urgency=body.priority,
+                context=body.context,
+                payload=body.payload,
+                requires_response=body.requires_response,
+                ttl_seconds=body.ttl_seconds,
+                dedupe_key=body.dedupe_key,
+            )
+        except Exception as exc:
+            handle_router_error(exc)
+        return {
+            "message_id": message_id,
+            "sender": "MANAGER",
+            "recipient": body.recipient,
+            "task_type": body.task_type,
+            "status": "queued",
+        }
 
     @app.get("/messages/peek")
     def peek_messages(
