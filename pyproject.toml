@@ -14,6 +14,19 @@ authors = [
 
 [project.scripts]
 enterprise-router = "enterprise_router.cli:main"
+enterprise-router-api = "enterprise_router.api:main"
+
+[project.optional-dependencies]
+api = [
+  "fastapi>=0.115",
+  "uvicorn>=0.30",
+]
+mongo = [
+  "pymongo>=4.8",
+]
+dev = [
+  "httpx>=0.27",
+]
 
 [tool.setuptools.packages.find]
 include = ["enterprise_router*"]

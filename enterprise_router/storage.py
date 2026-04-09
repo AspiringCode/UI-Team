@@ -1,105 +1,125 @@
 from __future__ import annotations
 
-import sqlite3
-from contextlib import closing
-from pathlib import Path
+from abc import ABC, abstractmethod
+from typing import Any
+
+from .models import AgentApiKeyRecord, AgentRecord, MessageEnvelope, RegistrationRequest
 
 
-class Database:
-    def __init__(self, path: str) -> None:
-        self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
+class RouterStorage(ABC):
+    @abstractmethod
+    def register_agent(self, agent: AgentRecord) -> None: ...
 
-    def connect(self) -> sqlite3.Connection:
-        conn = sqlite3.connect(self.path, isolation_level=None)
-        conn.row_factory = sqlite3.Row
-        conn.execute("PRAGMA foreign_keys = ON")
-        return conn
+    @abstractmethod
+    def get_agent(self, agent_name: str) -> AgentRecord | None: ...
 
-    def _initialize(self) -> None:
-        with closing(self.connect()) as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS agents (
-                    agent_name TEXT PRIMARY KEY,
-                    role TEXT NOT NULL,
-                    hierarchy_level INTEGER NOT NULL,
-                    trust_level INTEGER NOT NULL,
-                    file_path TEXT,
-                    endpoint TEXT,
-                    active INTEGER NOT NULL,
-                    registration_status TEXT NOT NULL,
-                    allowed_senders TEXT NOT NULL DEFAULT '[]',
-                    allowed_task_types TEXT NOT NULL DEFAULT '[]',
-                    created_at TEXT NOT NULL,
-                    approved_at TEXT
-                );
+    @abstractmethod
+    def list_agents(self, status: str | None = None) -> list[AgentRecord]: ...
 
-                CREATE TABLE IF NOT EXISTS registration_requests (
-                    agent_name TEXT PRIMARY KEY,
-                    role TEXT NOT NULL,
-                    token_hash TEXT NOT NULL,
-                    file_path TEXT,
-                    endpoint TEXT,
-                    metadata TEXT NOT NULL DEFAULT '{}',
-                    status TEXT NOT NULL,
-                    rejection_reason TEXT NOT NULL DEFAULT '',
-                    requested_at TEXT NOT NULL,
-                    reviewed_at TEXT,
-                    reviewed_by TEXT
-                );
+    @abstractmethod
+    def request_registration(self, req: RegistrationRequest, token_hash: str) -> str: ...
 
-                CREATE TABLE IF NOT EXISTS messages (
-                    id TEXT PRIMARY KEY,
-                    timestamp TEXT NOT NULL,
-                    sender TEXT NOT NULL,
-                    recipient TEXT NOT NULL,
-                    task_type TEXT NOT NULL,
-                    context TEXT NOT NULL,
-                    payload TEXT NOT NULL,
-                    status TEXT NOT NULL,
-                    error TEXT NOT NULL DEFAULT ''
-                );
+    @abstractmethod
+    def get_registration_request(self, agent_name: str) -> dict[str, Any] | None: ...
 
-                CREATE TABLE IF NOT EXISTS routing_metadata (
-                    message_id TEXT PRIMARY KEY,
-                    provenance_source TEXT,
-                    provenance_agent TEXT,
-                    provenance_trust_level INTEGER NOT NULL,
-                    urgency TEXT NOT NULL,
-                    ttl_seconds INTEGER,
-                    dedupe_key TEXT,
-                    recipient_level INTEGER NOT NULL,
-                    sender_level INTEGER NOT NULL,
-                    recipient_weight INTEGER NOT NULL,
-                    hierarchy_penalty INTEGER NOT NULL,
-                    computed_priority INTEGER NOT NULL,
-                    attempt_count INTEGER NOT NULL DEFAULT 0,
-                    lease_until TEXT,
-                    blocked_reason TEXT NOT NULL DEFAULT '',
-                    delivery_state TEXT NOT NULL DEFAULT 'pending',
-                    created_at TEXT NOT NULL,
-                    updated_at TEXT NOT NULL,
-                    FOREIGN KEY(message_id) REFERENCES messages(id) ON DELETE CASCADE
-                );
+    @abstractmethod
+    def list_registration_requests(self, status: str | None = None) -> list[dict[str, Any]]: ...
 
-                CREATE TABLE IF NOT EXISTS audit_log (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT NOT NULL,
-                    subject_id TEXT NOT NULL,
-                    actor TEXT NOT NULL,
-                    details TEXT NOT NULL DEFAULT '{}',
-                    created_at TEXT NOT NULL
-                );
+    @abstractmethod
+    def update_registration_status(
+        self,
+        agent_name: str,
+        status: str,
+        reviewed_at: str,
+        reviewed_by: str,
+        rejection_reason: str = "",
+    ) -> bool: ...
 
-                CREATE INDEX IF NOT EXISTS idx_messages_recipient
-                    ON messages(recipient, status);
+    @abstractmethod
+    def find_message_by_dedupe(
+        self, sender: str, recipient: str, task_type: str, dedupe_key: str
+    ) -> str | None: ...
 
-                CREATE INDEX IF NOT EXISTS idx_routing_delivery
-                    ON routing_metadata(delivery_state, computed_priority);
+    @abstractmethod
+    def insert_message(self, message: MessageEnvelope, routing: dict[str, Any]) -> None: ...
 
-                CREATE INDEX IF NOT EXISTS idx_audit_subject
-                    ON audit_log(subject_id, created_at);
-                """
-            )
+    @abstractmethod
+    def get_queue_records(
+        self,
+        recipient: str,
+        sender: str | None = None,
+        task_type: str | None = None,
+        min_priority: int | None = None,
+        limit: int | None = None,
+        pending_only: bool = False,
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def lease_next_message(
+        self, recipient: str, lease_until: str
+    ) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def get_message_state(
+        self, message_id: str, recipient: str
+    ) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def mark_message_done(self, message_id: str, now: str) -> None: ...
+
+    @abstractmethod
+    def requeue_message(
+        self, message_id: str, error: str, attempts: int, now: str
+    ) -> None: ...
+
+    @abstractmethod
+    def dead_letter_message(
+        self, message_id: str, error: str, attempts: int, now: str
+    ) -> None: ...
+
+    @abstractmethod
+    def requeue_expired_leases(
+        self, now: str, recipient: str | None = None
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def expire_ttl_messages(
+        self, now: str, recipient: str | None = None
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def log_audit(
+        self, event_type: str, subject_id: str, actor: str, details: dict[str, Any], created_at: str
+    ) -> None: ...
+
+    @abstractmethod
+    def list_audit_log(
+        self, limit: int = 50, subject_id: str | None = None
+    ) -> list[dict[str, Any]]: ...
+
+    @abstractmethod
+    def store_api_key(self, record: AgentApiKeyRecord) -> None: ...
+
+    @abstractmethod
+    def get_api_key(self, agent_name: str) -> dict[str, Any] | None: ...
+
+    @abstractmethod
+    def touch_api_key(self, agent_name: str, last_used_at: str) -> None: ...
+
+
+def create_storage(
+    backend: str = "sqlite",
+    db_path: str = "enterprise_router.db",
+    mongo_uri: str | None = None,
+    mongo_db_name: str | None = None,
+) -> RouterStorage:
+    normalized = backend.strip().lower()
+    if normalized == "sqlite":
+        from .sqlite_storage import SQLiteStorage
+
+        return SQLiteStorage(db_path)
+    if normalized == "mongo":
+        from .mongo_storage import MongoStorage
+
+        return MongoStorage(uri=mongo_uri, db_name=mongo_db_name)
+    raise ValueError(f"Unsupported router backend '{backend}'.")

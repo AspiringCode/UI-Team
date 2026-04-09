@@ -163,3 +163,16 @@ class QueuedMessage:
             "ttl_seconds": self.ttl_seconds,
             "dedupe_key": self.dedupe_key,
         }
+
+
+@dataclass(slots=True)
+class AgentApiKeyRecord:
+    agent_name: str
+    key_hash: str
+    label: str = "default"
+    created_at: str = field(default_factory=iso_now)
+    last_used_at: str | None = None
+    active: bool = True
+
+    def to_dict(self) -> dict[str, Any]:
+        return asdict(self)

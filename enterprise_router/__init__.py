@@ -1,5 +1,6 @@
 from .exceptions import AccessError, RegistrationError, RouterError, ValidationError
 from .models import (
+    AgentApiKeyRecord,
     AgentRecord,
     MessageEnvelope,
     QueuedMessage,
@@ -10,6 +11,7 @@ from .service import EnterpriseRouter
 
 __all__ = [
     "AccessError",
+    "AgentApiKeyRecord",
     "AgentRecord",
     "EnterpriseRouter",
     "MessageEnvelope",
